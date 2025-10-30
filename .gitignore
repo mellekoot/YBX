@@ -1,0 +1,4 @@
+/Data/*       
+!/Data/.gitkeep 
+/Debug/       
+/cache/       
