@@ -1,6 +1,10 @@
 <?php
 // --- CONFIG ---
-$apiKey = "fad51179"; 
+// Load API key from config.php
+$config = require __DIR__ . '/config.php';
+$apiKey = $config['OMDB_API_KEY'] ?? null;
+if (!$apiKey) die("<h1 style='color:white; text-align:center;'>Missing API Key</h1>");
+
 $dataDir = __DIR__ . "/Data/"; 
 
 // --- Find latest CSV file ---
