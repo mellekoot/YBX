@@ -1,0 +1,5 @@
+/* rename this to config.php and replace with your api key */
+<?php
+return [
+    'OMDB_API_KEY' => 'YOURAPI'
+];
