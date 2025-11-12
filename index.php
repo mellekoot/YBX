@@ -3,7 +3,7 @@
 
 $config = require __DIR__ . '/config.php';
 $apiKey = $config['OMDB_API_KEY'] ?? null;
-$apiKeyValid = false; // Fix: Initialiseer de variabele
+$apiKeyValid = false; 
 
 // Vertalingen
 $T = [
@@ -16,7 +16,7 @@ $T = [
     'api_error_message' => 'Filmposters en details kunnen niet worden opgehaald. Controleer uw API-sleutel in <code>config.php</code>.',
     'config_error' => 'Configuratie Fout: API Sleutel Mist in config.php',
     'data_error' => 'Geen CSV-bestanden gevonden in de /Data/ map.',
-    'movie_data_error' => 'Er is geen filmdata verwerkt. Controleer uw CSV-bestanden en zorg ervoor dat het scheidingsteken een komma (\',\') is.',
+    'movie_data_error' => 'Er zijn geen films gevonden voor de geselecteerde periode of uw API-sleutel is onlangs verlopen.',
     'director' => 'Regisseur',
     'genre' => 'Genre',
     'runtime' => 'Speelduur',
@@ -26,7 +26,10 @@ $T = [
     'recommended_price' => 'Aanbevolen Ticketprijs',
     'max_price_note' => 'Max €14,00',
     'imdb_link' => 'Bekijk op IMDb',
+    'loading_status' => 'Bezig met verwerken....',
+    'loading_detail' => 'Analyseert %d weken data.',
     'footer' => 'YBX Film Aanbeveling door Melle Koot &bull; Data verwerkt van weken: %s',
+    'loading_footer' => 'YBX door Melle Koot',
 ];
 
 // Error Handling for Missing API Key
@@ -43,11 +46,9 @@ $fileWeeks = [];
 
 // Verzamel weeknummers en jaar voor sortering
 foreach ($files as $file) {
-    // Extrahert jaar en week van de bestandsnaam (e.g., '25-38')
     if (preg_match('/(\d{2})-(\d{2})/', basename($file), $matches)) {
         $year = intval($matches[1]);
         $week = intval($matches[2]);
-        // Sorteersleutel (YYYYWW)
         $fileWeeks[$file] = $year * 100 + $week;
     }
 }
@@ -81,7 +82,7 @@ $displayWeeks = empty($processedWeeks) ? "Geen data geselecteerd" : implode(", "
 $moviesData = [];
 foreach ($filesToProcess as $file) {
     if (($handle = fopen($file, "r")) !== FALSE) {
-        fgetcsv($handle, 1000, ","); // Sla headers over, gebruikt komma als scheidingsteken
+        fgetcsv($handle, 1000, ","); 
         
         while (($data = fgetcsv($handle, 1000, ",")) !== FALSE) {
             $data = array_map('trim', $data);
@@ -125,17 +126,15 @@ function getMovieData($title, $apiKey) {
     
     if (isset($cache[$cacheKey])) return $cache[$cacheKey];
     
-    // Maak de titel schoon voor de API-zoekopdracht (FIX voor titels zoals "Superman (2025)")
     $searchTitle = preg_replace('/\s*\(\d{4}\)$/', '', $title);
 
     $url = "http://www.omdbapi.com/?apikey=" . $apiKey . "&t=" . urlencode($searchTitle);
     
-    // Fetch
     $json = @file_get_contents($url);
     if ($json === FALSE) return null;
 
     $data = json_decode($json, true);
-    if ($data && $data["Response"] == "True") {
+    if ($data && ($data["Response"] ?? "False") == "True") {
         return $cache[$cacheKey] = $data;
     }
     
@@ -147,19 +146,16 @@ function getRecommendedPrice($runtime, $totalVisitors, $releaseDate) {
     $base = 8.0; 
     $MAX_PRICE = 14.0; 
 
-    // Speelduur factor (Standaard 90 min)
     $runtimeMinutes = 90;
     if ($runtime && preg_match('/(\d+) min/', $runtime, $m)) {
         $runtimeMinutes = intval($m[1]);
     }
     $runtime_factor = min(1.4, max(0.9, $runtimeMinutes / 100)); 
 
-    // Bezoekers factoren
     $logBase = log10(1 + $totalVisitors);
     $attendance_factor = min(1.3, 0.9 + $logBase / 8);
     $popularity_factor = min(1.3, 0.9 + $logBase / 15);
 
-    // Leeftijdsfactor
     $age_factor = 1.0; 
     if ($releaseDate && $releaseDate != 'N/A') {
         $rel = DateTime::createFromFormat('Y-m-d', $releaseDate) ?: DateTime::createFromFormat('Y', $releaseDate);
@@ -170,13 +166,10 @@ function getRecommendedPrice($runtime, $totalVisitors, $releaseDate) {
         }
     }
 
-    // Bereken prijs
     $price = $base * $runtime_factor * $attendance_factor * $popularity_factor * $age_factor;
     
-    // Max Prijs Opleggen
     $price = min($price, $MAX_PRICE);
 
-    // Afronden op het dichtstbijzijnde 0.50
     return round($price * 2) / 2;
 }
 
@@ -204,6 +197,53 @@ body {
     margin: 0;
     padding: 0;
 }
+/* --- NIEUWE LAADSCHERM STIJLEN --- */
+#loading-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: #0c0c0e; 
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+    transition: opacity 0.5s;
+    flex-direction: column;
+    color: #6cf;
+    font-size: 1.5em;
+    pointer-events: none; 
+    text-align: center;
+    padding: 20px;
+}
+.loading-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 20px;
+}
+.spinner {
+    border: 4px solid rgba(108, 117, 125, 0.3);
+    border-top: 4px solid #6cf;
+    border-radius: 50%;
+    width: 40px;
+    height: 40px;
+    animation: spin 1s linear infinite;
+    margin-bottom: 15px;
+}
+.loading-footer {
+    position: absolute;
+    bottom: 20px;
+    font-size: 0.7em;
+    color: #a0a0a5;
+}
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+/* --- EINDE LAADSCHERM STIJLEN --- */
 header {
     background: linear-gradient(135deg, #2b3a4a, #1a1a20);
     padding: 30px 20px;
@@ -213,7 +253,7 @@ header {
 header h1 {
     margin: 0;
     font-size: 2.5em;
-    color: #6cf; /* Light Blue Accent */
+    color: #6cf; 
     letter-spacing: 1px;
 }
 .subheader {
@@ -381,6 +421,18 @@ footer {
 </style>
 </head>
 <body>
+
+<div id="loading-overlay">
+    <div class="loading-content">
+        <div class="spinner"></div>
+        <p><?= $T['loading_status'] ?></p>
+        <p style="font-size: 0.9em; color: #a0a0a5;"><?= sprintf($T['loading_detail'], $weeksToUse) ?></p>
+    </div>
+    <div class="loading-footer">
+        <p><?= $T['loading_footer'] ?></p>
+    </div>
+</div>
+
 <header>
     <h1><?= $T['title'] ?></h1>
     <p><?= sprintf($T['subtitle'], $weeksToUse) ?></p>
@@ -413,11 +465,6 @@ footer {
 
 <div class="grid">
 <?php
-if (empty($moviesArray)) {
-    echo "<p style='grid-column: 1 / -1; text-align: center; font-size: 1.2em; color: #f7aaaa;'>{$T['movie_data_error']}</p>";
-}
-
-// Render alleen films waarvoor de API-oproep succesvol was
 $hasMovies = false;
 foreach ($moviesArray as $movie):
     $title = $movie['title'];
@@ -426,7 +473,6 @@ foreach ($moviesArray as $movie):
     
     $isApiSuccessful = $data && ($data["Response"] ?? "False") == "True";
 
-    // --- ENKEL DOORGAAN ALS API SUCCESVOL IS ---
     if ($isApiSuccessful):
         $hasMovies = true;
         
@@ -467,7 +513,7 @@ foreach ($moviesArray as $movie):
             <span class="stat-value"><?= $totalAttendance ?></span>
         </div>
         <div class="stat-row" style="margin-top: 15px;">
-            <span class="price-label"><?= $T['recommended_price'] ?></span>
+            <span class="price-label"><?= $T['recommended_price'] ?> (<?= $T['max_price_note'] ?>)</span>
             <span class="price-value">€<?= number_format($price, 2, ",", ".") ?></span>
         </div>
     </div>
@@ -480,12 +526,40 @@ foreach ($moviesArray as $movie):
 endforeach; 
 
 if (!$hasMovies && $apiKeyValid): ?>
-    <p style='grid-column: 1 / -1; text-align: center; font-size: 1.2em; color: #a0a0a5;'>Geen films gevonden voor de geselecteerde periode of uw API-sleutel is onlangs verlopen.</p>
+    <p style='grid-column: 1 / -1; text-align: center; font-size: 1.2em; color: #a0a0a5;'><?= $T['movie_data_error'] ?></p>
 <?php endif; ?>
 </div>
 
 <footer>
     <p><?= sprintf($T['footer'], htmlspecialchars($displayWeeks)) ?></p>
 </footer>
+
+<script>
+// Dit script verbergt de overlay zodra de gehele pagina geladen is.
+document.addEventListener('DOMContentLoaded', function() {
+    const overlay = document.getElementById('loading-overlay');
+    if (overlay) {
+        // Gebruik 'load' event op window om te wachten tot ALLE assets (afbeeldingen, etc.) geladen zijn
+        window.addEventListener('load', function() {
+            // Fade out
+            overlay.style.opacity = '0';
+            // Hide after fade is complete
+            setTimeout(() => {
+                overlay.style.display = 'none';
+            }, 500); 
+        });
+
+        // Voor het geval de pagina snel laadt, verwijder de overlay direct na DOMContentLoaded
+        // als 'load' al gevuurd zou zijn, maar de CSS-overgang zorgt ervoor dat het er goed uitziet.
+        if (document.readyState === 'complete') {
+             overlay.style.opacity = '0';
+             setTimeout(() => {
+                overlay.style.display = 'none';
+            }, 500); 
+        }
+    }
+});
+</script>
+
 </body>
 </html>
