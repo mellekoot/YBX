@@ -1,4 +1,4 @@
 <?php
 return [
-    'OMDB_API_KEY' => 'fad51179'
+    'OMDB_API_KEY' => 'YOURAPI'
 ];
